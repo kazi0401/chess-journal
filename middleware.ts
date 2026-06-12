@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && pathname === '/login') {
-    return NextResponse.redirect(new URL('/home', request.url))
+    return NextResponse.redirect(new URL('/onboarding', request.url))
   }
 
   return response
