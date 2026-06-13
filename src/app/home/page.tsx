@@ -1,65 +1,129 @@
 'use client'
 
-import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
-import { parsePgn } from '@/lib/chess-pgn'
-import ChessBoard from '@/components/ChessBoard'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+
+
+interface Game {
+  id: string
+  opponent: string
+  result: 'win' | 'loss' | 'draw'
+  time_control: string
+  played_at: string
+}
 
 export default function HomePage() {
-  const [status, setStatus] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+  const [games, setGames] = useState<Game[]>([])
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<string | null>(null)
+  
+  useEffect(() => {
+    async function loadGames() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('games')
+        .select('id, opponent, result, time_control, played_at')
+        .order('played_at', { ascending: false })
+        .limit(20)
 
-  const pgn = `[Event "Live Chess"]
-    [Site "Chess.com"]
-    [Date "2021.03.04"]
-    [Round "?"]
-    [White "zaidanferizqo"]
-    [Black "OhMyLands"]
-    [Result "0-1"]
-    [TimeControl "600"]
-    [WhiteElo "231"]
-    [BlackElo "465"]
-    [Termination "OhMyLands won by checkmate"]
-    [ECO "C20"]
-    [EndTime "8:54:46 GMT+0000"]
-    [Link "https://www.chess.com/game/live/8586389713?username=ohmylands&move=0"]
+      if (!error && data) setGames(data)
+      setLoading(false)
+    }
 
-    1. a3 e5 2. e4 Nf6 3. Ba6 bxa6 4. Nc3 Bb7 5. Nb5 axb5 6. b4 Nxe4 7. a4 Bxb4 8.
-    Ba3 Bxd2+ 9. Ke2 Nc3+ 10. Kf1 Nxd1 11. c4 Nxf2 12. Ne2 Nxh1 13. Nd4 Qf6+ 14. Ke2
-    Qf2+ 15. Kd3 Qxd4+ 16. Kc2 Be4+ 17. Kb3 Qc3+ 18. Ka2 Qxc4+ 19. Kb2 Qc2# 0-1
-  `
+    loadGames()
+  }, [])
+  
+  async function fetchGames() {
+    setLoading(true)
+    const { data, error } = await supabase
+    .from('games')
+    .select('id, opponent, result, time_control, played_at')
+    .order('played_at', { ascending: false })
+    
+    if (!error && data) setGames(data)
+      setLoading(false)
+  }
 
-  const moves = parsePgn(pgn)
-  const lastMove = moves[moves.length - 1]
 
   async function handleSync() {
-    setLoading(true)
-    setStatus(null)
+    setSyncing(true)
+    setSyncStatus(null)
     try {
       const res = await fetch('/api/sync-games', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) {
-        setStatus(`Error: ${data.error}`)
+        setSyncStatus(`Error: ${data.error}`)
       } else {
-        setStatus(`Synced ${data.synced} games`)
+        setSyncStatus(`Synced ${data.synced} games`)
+        await fetchGames()
       }
     } catch {
-      setStatus('Something went wrong')
+      setSyncStatus('Something went wrong')
     } finally {
-      setLoading(false)
+      setSyncing(false)
     }
   }
 
+  function formatDate(iso: string) {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric'
+    })
+  }
+
+  function resultLabel(result: Game['result']) {
+    if (result === 'win') return { label: 'Win', classes: 'bg-[#DFF0E8] text-[#2A6448] border-[#8ACAAA]' }
+    if (result === 'loss') return { label: 'Loss', classes: 'bg-[#FAE8E7] text-[#8B2A20] border-[#E8A098]' }
+    return { label: 'Draw', classes: 'bg-[#EEE8DC] text-[#7A5C3A] border-[#D4C4A0]' }
+  }
+
   return (
-    <div className="min-h-screen bg-[#F5EFE4] flex flex-col items-center justify-center gap-4">
-      <button
-        onClick={handleSync}
-        disabled={loading}
-        className="text-sm px-4 py-2 rounded bg-[#4A3C2E] text-[#F5EFE4] disabled:opacity-50"
-      >
-        {loading ? 'Syncing...' : 'Sync games'}
-      </button>
-      {status && <p className="text-sm text-[#9A8A78]">{status}</p>}
+    <div className="min-h-screen bg-[#F5EFE4]">
+      <div className="max-w-xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-serif text-[#4A3C2E]">Chess Journal</h1>
+        <div className="flex items-center gap-3">
+          {syncStatus && <span className="text-xs text-[#9A8A78]">{syncStatus}</span>}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="text-xs px-3 py-1.5 rounded bg-[#4A3C2E] text-[#F5EFE4] disabled:opacity-50"
+          >
+            {syncing ? 'Syncing...' : 'Sync games'}
+          </button>
+        </div>
+      </div>
+    </div>
+
+      {loading ? (
+        <p className="text-sm text-[#9A8A78]">Loading games...</p>
+      ) : games.length === 0 ? (
+        <p className="text-sm text-[#9A8A78]">No games yet — hit sync to import your games.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {games.map(game => {
+            const { label, classes } = resultLabel(game.result)
+            return (
+              <div
+                key={game.id}
+                onClick={() => router.push(`/board/${game.id}`)}
+                className="bg-[#FBF7F0] border border-[#DCCFB4] rounded-lg px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-[#F5EFE4] transition-colors"
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm text-[#3A2E1E]">vs. {game.opponent}</span>
+                  <span className="text-xs text-[#9A8A78]">{formatDate(game.played_at)} · {game.time_control}s</span>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${classes}`}>
+                  {label}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
