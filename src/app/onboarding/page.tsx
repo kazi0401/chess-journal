@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
+import { verifyChessComUsername } from '@/lib/chess-com'
+
 export default function OnboardingPage() {
   const router = useRouter()
   const [username, setUsername] = useState('')
@@ -15,8 +17,8 @@ export default function OnboardingPage() {
     setError('')
 
     // Verify the username exists on Chess.com
-    const res = await fetch(`https://api.chess.com/pub/player/${username}`)
-    if (!res.ok) {
+    const valid = await verifyChessComUsername(username)
+    if (!valid) {
       setError("Couldn't find that Chess.com username. Double check it?")
       setLoading(false)
       return

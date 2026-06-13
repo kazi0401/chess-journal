@@ -22,9 +22,24 @@ export default function LoginPage() {
 
     if (error) {
       setError(error.message)
-    } else {
-      router.push('/onboarding')
+      setLoading(false)
+      return
     }
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setError('Something went wrong. Please try again.')
+      setLoading(false)
+      return
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('chess_com_username')
+      .eq('id', user.id)
+      .single()
+
+    router.push(profile ? '/home' : '/onboarding')
     setLoading(false)
   }
 
